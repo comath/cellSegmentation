@@ -9,6 +9,8 @@ from glob import glob
 import os
 from skimage.io import imread
 import matplotlib.pyplot as plt
+from keras.models import Sequential
+from keras.layers import BatchNormalization, Conv2D, UpSampling2D, Lambda
 
 
 dsb_data_dir = os.path.join('..','input')
@@ -57,8 +59,6 @@ for (_, c_row), (c_im, c_lab) in zip(train_img_df.sample(n_img).iterrows(),
     c_lab.axis('off')
     c_lab.set_title('Labeled')
 
-from keras.models import Sequential
-from keras.layers import BatchNormalization, Conv2D, UpSampling2D, Lambda
 simple_cnn = Sequential()
 simple_cnn.add(BatchNormalization(input_shape = (None, None, IMG_CHANNELS), 
                                   name = 'NormalizeInput'))
@@ -116,8 +116,7 @@ from skimage.morphology import closing, opening, disk
 def clean_img(x):
     return opening(closing(x, disk(1)), disk(3))
 fig, m_axs = plt.subplots(3, n_img, figsize = (12, 6))
-for (_, d_row), (c_im, c_lab, c_clean) in zip(test_img_df.sample(n_img).iterrows(), 
-                                     m_axs):
+for (_, d_row), (c_im, c_lab, c_clean) in zip(test_img_df.sample(n_img).iterrows(),m_axs):
     c_im.imshow(d_row['images'])
     c_im.axis('off')
     c_im.set_title('Microscope')
