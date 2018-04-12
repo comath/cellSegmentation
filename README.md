@@ -5,20 +5,39 @@ I had to write a new tensorflow op for this as if we tried to implement the chos
 
 #Shape Inference: 
 
-There are two main questions that need to be answered:
-- How does it work? 
-- If I want an input of a certain shape and an output that is computable from that shape how do i do it?
+## How does it work? 
 
-You have to define a lambda, that computes the shape using ''shape_inference.h''. These are computed using the InferenceContext class object that is passed to the lambda. All computational routines have a pointer as the last argument so that you can pass as a reference the output object. For example, if I wanted a op whose output whose dimensions are all but the last element of an input op we would use the following: 
 
-'''
+
+
+## How do I make a certain output?
+
+You have to define a lambda, that computes the shape using `shape_inference.h`. These are computed using the InferenceContext class object that is passed to the lambda. All computational routines have a pointer as the last argument so that you can pass as a reference the output object. For example, if I wanted a op whose output whose dimensions are all but the last element of an input op we would use the following: 
+
+```
     SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle loss_shape;								
       TF_RETURN_IF_ERROR(c->Subshape(c->input(0),0,-1,&loss_shape));							
       c->set_output(0,loss_shape);
       return Status::OK();
     });
-'''
+```
 
-To walk this though, step by step, the first line is the function handle that the REGISTER_OP calls to determine the output shapes. It starts a lambda that's expressed in the following few lines. The next line creates a ShapeHandle for the output shape that's passed to the next line. ''c'' is the inference context, holding all the information needed to determine the type and shape of the input and output tensors. It has several functions attached to it that don't interact with it's internal data, such as Subshape. This function takes in the start and end that you want to keep from the first input to the op, ''c-input(0)'', and outputs it into ''loss_shape''. It actually returns a ''Status'' (defined in lib/core/status.h). The ''TF_RETURN_IF_ERROR''  is for tensorflow's internal error handling methods. We finally set the first output to have the same shape as the loss_shape and return an OK status indicating that there's been no errors.
+To walk this though, step by step, the first line is the function handle that the REGISTER_OP calls to determine the output shapes. It starts a lambda that's expressed in the following few lines. The next line creates a ShapeHandle for the output shape that's passed to the next line. `c` is the inference context, holding all the information needed to determine the type and shape of the input and output tensors. It has several functions attached to it that don't interact with it's internal data, such as Subshape. This function takes in the start and end that you want to keep from the first input to the op, `c-input(0)`, and outputs it into `loss_shape`. It actually returns a `Status` (defined in lib/core/status.h). The `TF_RETURN_IF_ERROR`  is for tensorflow's internal error handling methods. We finally set the first output to have the same shape as the loss_shape and return an OK status indicating that there's been no errors.
+
+## How do I require a certain input?
+
+```
+    SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+      return Status::OK();
+    });
+```
+
+I want the input to always be 4 dimensional, I want a batch size, and an image with an X and a Y dimension that each holds N dimensions. So, the input has to be a rank 4 tensor. To do this we have several 
+The above two can be combines and if we do so we can use `input` as a placeholder for the first input tensor.
+
+
+# How do I allocate for output or temporarily?
 
