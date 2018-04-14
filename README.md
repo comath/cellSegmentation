@@ -3,12 +3,23 @@
 I had to write a new tensorflow op for this as if we tried to implement the chosen loss function at the python level we will have far too many little ops glued together. This is numerically unstable, I don't know why but I think it's because the loss is highly unstable due to the numerous averaging steps taken. Even if that weren't true, it's slow and unwieldy.   
 
 
-#Shape Inference: 
+# Registering the Operation
 
-## How does it work? 
+## How does it work? Why?
 
+``
+REGISTER_OP("SwarmEmbeddingLoss")
+	.Attr("T: {float32, float64}")
+	.Attr("S: {int32, int64}")
+    .Input("embedding: T")
+    .Input("rle_mask: S")
+    .Output("swarm_loss: float32")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c){
+});
 
+``
 
+This registers the op with tensorflow. This op has 2 inputs and 1 output. The `embedding` input has to be either a float or a double, and the `rle_mask` has to be either a int or a long. We also determine the output as a float. The current description of this in the [tensorflow documentation](https://www.tensorflow.org/extend/adding_an_op#list_inputs_and_outputs). This is all I've needed to do with this so far. If I run into more issues I will update this later. However, the `SetShapeFn` is the part I need to look into more and is probably more important for most custom ops so it's featured here. 
 
 ## How do I make a certain output?
 
@@ -31,6 +42,12 @@ To walk this though, step by step, the first line is the function handle that th
     SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+
+      ShapeHandle rle_input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &rle_input));
+
+      DimensionHandle rle_end_dim;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(rle_input, 3), 2, &rle_end_dim));
       return Status::OK();
     });
 ```
@@ -39,5 +56,23 @@ I want the input to always be 4 dimensional, I want a batch size, and an image w
 The above two can be combines and if we do so we can use `input` as a placeholder for the first input tensor.
 
 
-# How do I allocate for output or temporarily?
+# Output
 
+## How do I allocate for output?
+```
+Tensor* output_tensor = NULL;
+OP_REQUIRES_OK(context, context->allocate_output(0, loss_shape,
+                                                 &output_tensor));
+```
+
+The output tensors are already set up in the `OpKernelContext`, with the correct type though they are not allocated and have no given shape. For the first tensor (the 0), we pass a shape, and a reference to a pointer. I don't know if it error checks to ensure that the output loss is of the correct shape, but don't screw it up!
+
+## How do I allocate for scratch space?
+
+```
+Tensor mean_tensor_temp;
+OP_REQUIRES_OK(context, context->allocate_temp(input_tensor.dtype(), 
+								mean_shape_temp, &mean_tensor_temp));
+```
+
+This is the temporary version of above. The type cannot be inferred from context, so it needs to be passed. There's an enumeration in `types.pb.h` that holds all the types. The most useful ones are `DT_FLOAT` and `DT_INT32`. Remember the `Tensor` object is just a reference, so this function provides the tensor with the type and the shape and then it allocates the appropriate internal buffer.
