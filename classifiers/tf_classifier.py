@@ -106,12 +106,14 @@ if __name__ == '__main__':
 	init = tf.global_variables_initializer()
 	sess.run(init)
 
-	summBaseString = 'tfLogs/basic_test2'
+
+	summBaseString = 'tfLogs/basic_test'
 	writer = tf.summary.FileWriter(summBaseString)
 	testWriter = tf.summary.FileWriter(summBaseString + '_test')
 
 
-	for i in range(1000):
+
+	for i in range(100):
 		images, masks, mask_count = next(batcher)
 
 		trainNP, summariesNP = sess.run([trainOp,summaries],feed_dict={Y:masks,Y_count:mask_count,X:images})
