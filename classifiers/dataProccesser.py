@@ -48,6 +48,7 @@ ones = np.ones([500,500],dtype=np.int32)
 zeros = np.zeros([500,500],dtype=np.int32)
 
 def read_and_stack(in_img_list):
+    masksOut = np.zeros([500,500],dtype=np.int32)
     for i,c_img in enumerate(in_img_list):
         mask = resize(imread(c_img),[500,500])
         oned_mask = np.where(mask > 0.001, ones, zeros)
