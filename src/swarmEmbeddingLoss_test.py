@@ -31,6 +31,9 @@ class SwarmLossTest(tf.test.TestCase):
 		self.differences = np.zeros((self.batch, self.imgX, self.imgY, self.embed))  # 10 points in 3 dimensions
 		self.attractiveLoss = np.zeros((self.batch, self.imgX, self.imgY))  # 10 points in 3 dimensions
 
+		self.repulsiveDifferences = np.zeros((self.batch, self.imgX, self.imgY, self.embed))  # 10 points in 3 dimensions
+		self.repulsiveLoss = np.zeros((self.batch, self.imgX, self.imgY))  # 10 points in 3 dimensions
+
 		for batch in range(self.batch):
 			for embedding in range(2):
 				emb_count = 0
@@ -42,11 +45,20 @@ class SwarmLossTest(tf.test.TestCase):
 							self.differences[batch,x,y] = self.X[batch,x,y] - self.masked_averages[batch,embedding]
 							self.attractiveLoss[batch,x,y] = (0.5)*np.linalg.norm(self.differences[batch,x,y])**2
 
+							for otherEmbedding in range(embedding):
+								temp = self.X[batch,x,y] - self.masked_averages[batch,otherEmbedding]
+								self.repulsiveLoss[batch,x,y] += (0.5)*np.linalg.norm(temp)**2
+								self.repulsiveDifferences[batch,x,y] += temp
+							for otherEmbedding in range(embedding+1,2):
+								temp = self.X[batch,x,y] - self.masked_averages[batch,otherEmbedding]
+								self.repulsiveLoss[batch,x,y] += (0.5)*np.linalg.norm(temp)**2
+								self.repulsiveDifferences[batch,x,y] += temp
+
+
 		self.feeder = tf.placeholder(tf.float32,[self.batch, self.imgX, self.imgY, self.embed])
 		self.rle_feeder = tf.placeholder(tf.int32,[self.batch, 2, self.imgX, 2])
 		self.average_feeder = tf.placeholder(tf.int32,[self.batch, 2, self.embed])
-
-
+		self.ones = tf.ones([self.batch, self.imgX,self.imgY], tf.float32)
 
 	def testMaskedAverages(self):
 		swarmAverage_module = tf.load_op_library('../bin/swarmAverage.so')
@@ -73,10 +85,32 @@ class SwarmLossTest(tf.test.TestCase):
 
 		with self.test_session() as sess:
 			averages = swarmAverage_module.masked_averages(self.feeder,self.rle_feeder)
-			result = swarmAttractiveLoss_module.derived_attractive_loss(self.feeder,self.rle_feeder,averages)
+			result = swarmAttractiveLoss_module.derived_attractive_loss(self.feeder,self.rle_feeder,averages,self.ones)
 			backprop_results = sess.run(result,feed_dict={self.feeder:self.X,self.rle_feeder:self.rle_mask})
 			
 			self.assertAllClose(self.differences, backprop_results)
+
+	def testRepulsiveLoss(self):
+		swarmAverage_module = tf.load_op_library('../bin/swarmAverage.so')
+		swarmRepulsiveLoss_module = tf.load_op_library('../bin/swarmRepulsiveLoss.so')
+
+		with self.test_session() as sess:
+			averages = swarmAverage_module.masked_averages(self.feeder,self.rle_feeder)
+			result = swarmRepulsiveLoss_module.repulsive_loss(self.feeder,self.rle_feeder,averages)
+			loss_results = sess.run(result,feed_dict={self.feeder:self.X,self.rle_feeder:self.rle_mask})
+			
+			self.assertAllClose(self.repulsiveLoss, loss_results)
+
+	def testRepulsiveLossBackprop(self):
+		swarmAverage_module = tf.load_op_library('../bin/swarmAverage.so')
+		swarmRepulsiveLoss_module = tf.load_op_library('../bin/swarmRepulsiveLoss.so')
+
+		with self.test_session() as sess:
+			averages = swarmAverage_module.masked_averages(self.feeder,self.rle_feeder)
+			result = swarmRepulsiveLoss_module.derived_repulsive_loss(self.feeder,self.rle_feeder,averages,self.ones)
+			backprop_results = sess.run(result,feed_dict={self.feeder:self.X,self.rle_feeder:self.rle_mask})
+
+			self.assertAllClose(self.repulsiveDifferences, backprop_results)
 
 
 
