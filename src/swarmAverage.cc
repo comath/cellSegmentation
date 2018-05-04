@@ -15,30 +15,28 @@ the last dimension holds the dim2_min, dim2_max coordinates, it computes the ave
 value of the input `embedding` for each mask. 
 */
 REGISTER_OP("MaskedAverages")
-	.Attr("T: {float32, float64}")
-	.Attr("S: {int32, int64}")
-    .Input("embeddings: T")
-    .Input("rle_mask: S")
-    .Output("masked_averages: T")
-    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
-      shape_inference::ShapeHandle input;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+  .Attr("T: {float32, float64}")
+  .Attr("S: {int32, int64}")
+  .Input("embeddings: T")
+  .Input("rle_mask: S")
+  .Output("masked_averages: T")
+  .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+  shape_inference::ShapeHandle input;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
 
-      shape_inference::ShapeHandle rle_input;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &rle_input));
+  shape_inference::ShapeHandle rle_input;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &rle_input));
 
-      shape_inference::DimensionHandle rle_end_dim;
-      TF_RETURN_IF_ERROR(c->WithValue(c->DimKnownRank(rle_input, 3), 2, &rle_end_dim));
+  shape_inference::DimensionHandle rle_end_dim;
+  TF_RETURN_IF_ERROR(c->WithValue(c->DimKnownRank(rle_input, 3), 2, &rle_end_dim));
 
-      shape_inference::ShapeHandle mean_shape;
-      TF_RETURN_IF_ERROR(c->Subshape(rle_input,0,-1,&mean_shape));
-      TF_RETURN_IF_ERROR(c->ReplaceDim(mean_shape, -1, c->DimKnownRank(input, 3),
-                          &mean_shape));
-      c->set_output(0,mean_shape);
-      return Status::OK();
-    });
-
-
+  shape_inference::ShapeHandle mean_shape;
+  TF_RETURN_IF_ERROR(c->Subshape(rle_input,0,-1,&mean_shape));
+  TF_RETURN_IF_ERROR(c->ReplaceDim(mean_shape, -1, c->DimKnownRank(input, 3),
+                      &mean_shape));
+  c->set_output(0,mean_shape);
+  return Status::OK();
+});
 
 
 // Sernel_swarmEmbeddingLoss.cc
