@@ -132,14 +132,15 @@ class AttractiveLossOp : public OpKernel {
       Name("AttractiveLoss").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       AttractiveLossOp<CPUDevice, T,S>);
 REGISTER_CPU_AL(float,int32);
-/*
+
 REGISTER_OP("DerivedAttractiveLoss")
   .Attr("T: {float32, float64}")
   .Attr("S: {int32, int64}")
     .Input("embeddings: T")
     .Input("rle_mask: S")
     .Input("averages: T")
-    .Output("attractive_losses: T")
+    .Input("gradient_in: T")
+    .Output("gradient_out: T")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
@@ -164,40 +165,47 @@ struct DerivedAttractiveLossFunctor {
       const Eigen::Tensor<T,4, Eigen::RowMajor> logits_embeddings, 
       const Eigen::Tensor<S,4, Eigen::RowMajor> rle_mask, 
       const Eigen::Tensor<T,3, Eigen::RowMajor> mean_embeddings,
-      T* loss_outputs) {
+      const Eigen::Tensor<T,3, Eigen::RowMajor> grad_up,
+      T* grad_down_outputs) {
     
   const int batch_size = logits_embeddings.dimension(0);
-  const int size_x = logits_embeddings.dimension(1);
-  const int size_y = logits_embeddings.dimension(2);
-  const int embedding_size = logits_embeddings.dimension(3);
-  const int embedding_count = rle_mask.dimension(1);
+    const int size_x = logits_embeddings.dimension(1);
+    const int size_y = logits_embeddings.dimension(2);
+    const int embedding_size = logits_embeddings.dimension(3);
+    const int embedding_count = rle_mask.dimension(1);
 
     Eigen::array<int, 4> window_logits(1,1,1,embedding_size);
     Eigen::array<int, 4> offset_logits(0,0,0,0);
-    Eigen::array<int, 4> window_mean(1,1,embedding_size);
-    Eigen::array<int, 4> offset_mean(0,0,0);
-    Eigen::array<int, 1> dims({2});
 
-    Eigen::Tensor<T,3, Eigen::RowMajor> mean_scratch(1,1,embedding_size);
+    Eigen::array<int, 3> window_mean(1,1,embedding_size);
+    Eigen::array<int, 3> offset_mean(0,0,0);
 
     // Create the average embedding for each mask
     for (int batch = 0; batch < batch_size; ++batch) {
       offset_logits[0] = batch;
-      
+      offset_mean[0] = batch;
+
       for(int embedding = 0; embedding < embedding_count; ++embedding) {
-        
+        offset_mean[1] = embedding;
+        auto mean_scratch = mean_embeddings.slice(offset_mean,window_mean);
+        Eigen::Tensor<T,4, Eigen::RowMajor> my_mean_embedding = (mean_scratch.reshape(window_logits)); // Delays the computation and allows the compiler to optimize
         for(int x = 0; x < size_x; ++x) {
           offset_logits[1] = x;
           S min_y = std::max(0,rle_mask(batch,embedding,x,0));
           S max_y = std::min(size_y,rle_mask(batch,embedding,x,1));
           for(int y = min_y; y < max_y; ++y) {
-            Eigen::Tensor<T,1> middle = (logits_embeddings.slice(offset_logits,window_logits) - mean_scratch.slice(offset_mean,window_mean)).square().sum();
-            loss_outputs[batch*size_x*size_y + x*size_y + y] = middle.data()[0];
+            offset_logits[2] = y;
+            auto emb_scratch = (logits_embeddings.slice(offset_logits,window_logits) - my_mean_embedding);
+            Eigen::Tensor<T,4, Eigen::RowMajor> middle = grad_up(batch,x,y)*(emb_scratch);
+            memcpy(
+              grad_down_outputs + (batch*size_x*size_y + x*size_y + y)*embedding_size,
+              middle.data(),
+              sizeof(T)*embedding_size);
           }
-          
         } 
       }
     }
+
   }
 };
 
@@ -211,6 +219,7 @@ class DerivedAttractiveLossOp : public OpKernel {
     const Tensor& input_tensor = context->input(0);
     const Tensor& rle_tensor = context->input(1);
     const Tensor& mean_tensor = context->input(2);
+    const Tensor& grad_up_tensor = context->input(3);
 
 
     TensorShape input_shape = input_tensor.shape();
@@ -218,7 +227,7 @@ class DerivedAttractiveLossOp : public OpKernel {
    
     // Create an output tensor
     Tensor* output_tensor = NULL;
-    OP_REQUIRES_OK(context, context->allocate_output(0, derived_loss_shape,
+    OP_REQUIRES_OK(context, context->allocate_output(0, loss_shape,
                                                      &output_tensor));
     // Do the computation.
     OP_REQUIRES(context, input_tensor.NumElements() <= tensorflow::kint32max,
@@ -229,16 +238,16 @@ class DerivedAttractiveLossOp : public OpKernel {
         input_tensor.tensor<T,4>(),
         rle_tensor.tensor<S,4>(),
         mean_tensor.tensor<T,3>(),
+        grad_up_tensor.tensor<T,3>(),
         output_tensor->flat<T>().setZero().data());
 
   }
 };
 
 // Register the CPU kernels.
-#define REGISTER_CPU_AL(T,S)                                                    \
+#define REGISTER_CPU_DAL(T,S)                                                    \
   REGISTER_KERNEL_BUILDER(                                                      \
       Name("DerivedAttractiveLoss").Device(DEVICE_CPU).TypeConstraint<T>("T"),  \
       DerivedAttractiveLossOp<CPUDevice, T,S>);
-REGISTER_CPU_AL(float,int32);
+REGISTER_CPU_DAL(float,int32);
 
-*/
