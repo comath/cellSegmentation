@@ -55,6 +55,24 @@ def read_and_stack(in_img_list):
         masksOut = masksOut + (i+1)*oned_mask
     return masksOut
 
+def encode_rle(in_img_list):
+    masksOut = np.zeros([400,500,2],dtype=np.int32)
+    for i,c_img in enumerate(in_img_list):
+        mask = resize(imread(c_img),[500,500])
+        mask = np.where(mask == 1)
+        print mask
+        for j in range(500):
+            y_0 = 0
+            y_1 = 0
+            for k in range(499):
+                if mask[j,k] == 0 and mask[j,k+1] > 0:
+                    y_0 = k
+                if mask[j,k] > 0 and mask[j,k+1] == 0:
+                    y_1 = k
+            masksOut[i,j,0] = y_0
+            masksOut[i,j,1] = y_1
+    return masksOut
+
 def read_and_sum(in_img_list):
     return np.sum(np.stack([imread(c_img) for c_img in in_img_list], 0), 0)/255.0
 
@@ -69,8 +87,8 @@ train_img_df['images'] = train_img_df['images'].map(read).map(lambda x: x[:,:,:I
 
 print("Counting Masks")
 train_img_df['masksCount'] = train_img_df['masks'].map(len)
-print("Building Masks")
-train_img_df['masks'] = train_img_df['masks'].map(read_and_stack)
+print("Building Run Length Encoded Masks")
+train_img_df['rle_masks'] = train_img_df['masks'].map(encode_rle)
 
 
 fig, m_axs = plt.subplots(2, n_img, figsize = (12, 4))
@@ -80,12 +98,12 @@ for (_, c_row), (c_im, c_lab) in zip(train_img_df.sample(n_img).iterrows(),
     c_im.axis('off')
     c_im.set_title('Microscope')
     
-    c_lab.imshow(c_row['masks'])
+    c_lab.imshow(c_row['rle_masks'])
     c_lab.axis('off')
     c_lab.set_title('Labeled')
     c_lab.set_title(str(c_row['masksCount']) + str(c_row['masks'].shape))
 
-train_img_df.to_pickle("cell.df")
+train_img_df.to_pickle("rle_cell.df")
 
 print train_img_df['image_shapes_x'].mean()
 print train_img_df['image_shapes_y'].mean()

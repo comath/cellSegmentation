@@ -34,6 +34,6 @@ def _repulsive_loss_grad(op, grad):
 	rle_masks = op.inputs[1]
 	averages = op.inputs[2]
 
-	return [swarmRepulsiveLoss_module.derived_repulsive_loss(x,rle_masks,averages,up_grad),
+	return [swarmRepulsiveLoss_module.derived_repulsive_loss(x,rle_masks,averages,grad),
 			None,
 			None]

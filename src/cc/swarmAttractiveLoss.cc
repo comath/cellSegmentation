@@ -136,30 +136,31 @@ REGISTER_CPU_AL(float,int32);
 REGISTER_OP("DerivedAttractiveLoss")
   .Attr("T: {float32, float64}")
   .Attr("S: {int32, int64}")
-    .Input("embeddings: T")
-    .Input("rle_mask: S")
-    .Input("averages: T")
-    .Input("gradient_in: T")
-    .Output("gradient_out: T")
-    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
-      shape_inference::ShapeHandle input;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+  .Input("embeddings: T")
+  .Input("rle_mask: S")
+  .Input("averages: T")
+  .Input("gradient_in: T")
+  .Output("gradient_out: T")
+  .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+    shape_inference::ShapeHandle input;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
 
-      shape_inference::ShapeHandle rle_input;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &rle_input));
+    shape_inference::ShapeHandle rle_input;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &rle_input));
 
-      shape_inference::DimensionHandle rle_end_dim;
-      TF_RETURN_IF_ERROR(c->WithValue(c->DimKnownRank(rle_input, 3), 2, &rle_end_dim));
+    shape_inference::DimensionHandle rle_end_dim;
+    TF_RETURN_IF_ERROR(c->WithValue(c->DimKnownRank(rle_input, 3), 2, &rle_end_dim));
 
-      shape_inference::ShapeHandle mean_input;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 3, &mean_input));
+    shape_inference::ShapeHandle mean_input;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 3, &mean_input));
 
-      shape_inference::ShapeHandle up_input;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 3, &up_input));
+    shape_inference::ShapeHandle up_input;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 3, &up_input));
 
-      c->set_output(0,input);
-      return Status::OK();
-    });
+    c->set_output(0,input);
+    return Status::OK();
+  }
+);
 
 // CPU specialization of actual computation.
 template <typename Device, typename T, typename S>
@@ -171,7 +172,7 @@ struct DerivedAttractiveLossFunctor {
       const Eigen::Tensor<T,3, Eigen::RowMajor> grad_up,
       T* grad_down_outputs) {
     
-  const int batch_size = logits_embeddings.dimension(0);
+    const int batch_size = logits_embeddings.dimension(0);
     const int size_x = logits_embeddings.dimension(1);
     const int size_y = logits_embeddings.dimension(2);
     const int embedding_size = logits_embeddings.dimension(3);

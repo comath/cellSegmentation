@@ -12,35 +12,38 @@ For a image mask with run length encoding with shape (batch_size,num_masks,dim1,
 the last dimension holds the dim2_min, dim2_max coordinates, and a set of average points 
 (batch_size,num_masks,embedding_size). 
 
-This computes L_(batch,x,y) = (1/(n-1))\Sum_{j!=i} 1/2 || E_{batch,x,y} - M_{batch,j} ||^2   if y \in {y_{batch,i,x,1},...y_{batch,i,x,2}} 
-                              0 								                                    else  
+This computes
+
+ L_(batch,x,y) = (1/(n-1))\Sum_{j!=i} 1/2 || E_{batch,x,y} - M_{batch,j} ||_2^2   if y \in {y_{batch,i,x,1},...y_{batch,i,x,2}} 
+                 0 								                                    else  
 */
 REGISTER_OP("RepulsiveLoss")
 	.Attr("T: {float32, float64}")
 	.Attr("S: {int32, int64}")
-    .Input("embeddings: T")
-    .Input("rle_mask: S")
-    .Input("averages: T")
-    .Output("repulsive_losses: T")
-    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
-      shape_inference::ShapeHandle input;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+  .Input("embeddings: T")
+  .Input("rle_mask: S")
+  .Input("averages: T")
+  .Output("repulsive_losses: T")
+  .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+    shape_inference::ShapeHandle input;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
 
-      shape_inference::ShapeHandle rle_input;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &rle_input));
+    shape_inference::ShapeHandle rle_input;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &rle_input));
 
-      shape_inference::DimensionHandle rle_end_dim;
-      TF_RETURN_IF_ERROR(c->WithValue(c->DimKnownRank(rle_input, 3), 2, &rle_end_dim));
+    shape_inference::DimensionHandle rle_end_dim;
+    TF_RETURN_IF_ERROR(c->WithValue(c->DimKnownRank(rle_input, 3), 2, &rle_end_dim));
 
-      shape_inference::ShapeHandle mean_shape;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 3, &mean_shape));
+    shape_inference::ShapeHandle mean_shape;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 3, &mean_shape));
 
-      shape_inference::ShapeHandle loss_shape;
-      TF_RETURN_IF_ERROR(c->Subshape(input,0,-1,&loss_shape));
+    shape_inference::ShapeHandle loss_shape;
+    TF_RETURN_IF_ERROR(c->Subshape(input,0,-1,&loss_shape));
 
-      c->set_output(0,loss_shape);
-      return Status::OK();
-    });
+    c->set_output(0,loss_shape);
+    return Status::OK();
+  }
+);
 
 
 // CPU specialization of actual computation.
@@ -83,14 +86,14 @@ struct RepulsiveLossFunctor {
               auto mean_scratch = mean_embeddings.slice(offset_mean,window_mean);
               auto my_mean_embedding = (mean_scratch.reshape(window_logits)); // Delays the computation and allows the compiler to optimize
               Eigen::Tensor<T,3, Eigen::RowMajor> middle = (logits_embeddings.slice(offset_logits,window_logits) - my_mean_embedding).square().sum(dims3);
-              loss_outputs[batch*size_x*size_y + x*size_y + y] += 0.5*middle.data()[0];
+              loss_outputs[batch*size_x*size_y + x*size_y + y] += 0.5*middle.data()[0]; 
             }
             for(int embedding_other = embedding_current + 1; embedding_other < embedding_count; ++embedding_other) {
               offset_mean[1] = embedding_other;
               auto mean_scratch = mean_embeddings.slice(offset_mean,window_mean);
               auto my_mean_embedding = (mean_scratch.reshape(window_logits));
               Eigen::Tensor<T,3, Eigen::RowMajor> middle = (logits_embeddings.slice(offset_logits,window_logits) - my_mean_embedding).square().sum(dims3);
-              loss_outputs[batch*size_x*size_y + x*size_y + y] += 0.5*middle.data()[0];
+              loss_outputs[batch*size_x*size_y + x*size_y + y] += 0.5*middle.data()[0]; 
             }
             loss_outputs[batch*size_x*size_y + x*size_y + y] /= embedding_count - 1;
           }
@@ -106,22 +109,22 @@ class RepulsiveLossOp : public OpKernel {
  public:
   explicit RepulsiveLossOp(OpKernelConstruction* context) : OpKernel(context) {}
 
+
   void Compute(OpKernelContext* context) override {
     // Grab the input tensor
     const Tensor& input_tensor = context->input(0);
     const Tensor& rle_tensor = context->input(1);
     const Tensor& mean_tensor = context->input(2);
 
-
     TensorShape input_shape = input_tensor.shape();
     TensorShape loss_shape = input_shape;
     loss_shape.RemoveLastDims(1);
-
    
     // Create an output tensor
     Tensor* output_tensor = NULL;
     OP_REQUIRES_OK(context, context->allocate_output(0, loss_shape,
                                                      &output_tensor));
+
     // Do the computation.
     OP_REQUIRES(context, input_tensor.NumElements() <= tensorflow::kint32max,
                 errors::InvalidArgument("Too many elements in tensor"));
@@ -132,7 +135,6 @@ class RepulsiveLossOp : public OpKernel {
         rle_tensor.tensor<S,4>(),
         mean_tensor.tensor<T,3>(),
         output_tensor->flat<T>().setZero().data());
-
   }
 };
 
@@ -210,23 +212,22 @@ struct DerivedRepulsiveLossFunctor {
           S max_y = std::min(size_y,rle_mask(batch,embedding_current,x,1));
 
           Eigen::Tensor<T, 4, Eigen::RowMajor> average_difference(1,1,1,embedding_size);
-          average_difference.setZero();
-
 
           for(int y = min_y; y < max_y; ++y) {
+            average_difference.setZero();
             offset_logits[2] = y;
             for(int embedding_other = 0; embedding_other < embedding_current; ++embedding_other) {
               offset_mean[1] = embedding_other;
               auto mean_scratch = mean_embeddings.slice(offset_mean,window_mean);
               auto my_mean_embedding = (mean_scratch.reshape(window_logits)); // Delays the computation and allows the compiler to optimize
-              auto middle = (logits_embeddings.slice(offset_logits,window_logits) - my_mean_embedding).square().sum(dims3);
+              auto middle = (logits_embeddings.slice(offset_logits,window_logits) - my_mean_embedding);
               average_difference = average_difference + middle;
             }
             for(int embedding_other = embedding_current + 1; embedding_other < embedding_count; ++embedding_other) {
               offset_mean[1] = embedding_other;
               auto mean_scratch = mean_embeddings.slice(offset_mean,window_mean);
               auto my_mean_embedding = (mean_scratch.reshape(window_logits));
-              auto middle = (logits_embeddings.slice(offset_logits,window_logits) - my_mean_embedding).square().sum(dims3);
+              auto middle = (logits_embeddings.slice(offset_logits,window_logits) - my_mean_embedding);
               average_difference = average_difference + middle;
             }
             average_difference = (1.0/(embedding_count-1))*average_difference;
@@ -263,8 +264,6 @@ class DerivedRepulsiveLossOp : public OpKernel {
     // Do the computation.
     OP_REQUIRES(context, input_tensor.NumElements() <= tensorflow::kint32max,
                 errors::InvalidArgument("Too many elements in tensor"));
-
-    std::cout << loss_shape.dim_size(0) << loss_shape.dim_size(1) << loss_shape.dim_size(2) << loss_shape.dim_size(3) << "\n";
     
     DerivedRepulsiveLossFunctor<Device, T, S>()(
         context->eigen_device<Device>(),

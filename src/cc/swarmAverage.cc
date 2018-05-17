@@ -46,48 +46,50 @@ REGISTER_OP("MaskedAverages")
 // CPU specialization of actual computation.
 template <typename Device, typename T, typename S>
 struct getMaskedAveragesFunctor {
-  void operator()(const Device& d,
-  		const Eigen::Tensor<T,4, Eigen::RowMajor> logits_embeddings, 
-  		const Eigen::Tensor<S,4, Eigen::RowMajor> rle_mask, 
-  		T* mean_scratch_buffer) {
-  	
-	const int batch_size = logits_embeddings.dimension(0);
-	const int size_x = logits_embeddings.dimension(1);
-	const int size_y = logits_embeddings.dimension(2);
-	const int embedding_size = logits_embeddings.dimension(3);
-	const int embedding_count = rle_mask.dimension(1);
+	void operator()(const Device& d,
+	const Eigen::Tensor<T,4, Eigen::RowMajor> logits_embeddings, 
+	const Eigen::Tensor<S,4, Eigen::RowMajor> rle_mask, 
+	T* mean_scratch_buffer) {
 
-    Eigen::array<int, 4> window(1,1,1,embedding_size);
-    Eigen::array<int, 4> offset_logits(0,0,0,0);
-    Eigen::array<int, 1> dims({2});
+		const int batch_size = logits_embeddings.dimension(0);
+		const int size_x = logits_embeddings.dimension(1);
+		const int size_y = logits_embeddings.dimension(2);
+		const int embedding_size = logits_embeddings.dimension(3);
+		const int embedding_count = rle_mask.dimension(1);
 
-    Eigen::Tensor<T,3, Eigen::RowMajor> mean_scratch(1,1,embedding_size);
-    // Create the average embedding for each mask
-    for (int batch = 0; batch < batch_size; ++batch) {
-    	offset_logits[0] = batch;
-    	
-    	for(int embedding = 0; embedding < embedding_count; ++embedding) {
-		    mean_scratch.setZero();
-	    	int num_elements = 0;
-	    	
-	    	for(int x = 0; x < size_x; ++x){
-    			offset_logits[1] = x;
-    			S min_y = std::max(0,rle_mask(batch,embedding,x,0));
-    			S max_y = std::min(size_y,rle_mask(batch,embedding,x,1));
-    			if(max_y > min_y){
-	    			window[2] = max_y - min_y;
-	    			offset_logits[2] = min_y;
-	    			
-			    	mean_scratch += (logits_embeddings.slice(offset_logits,window)).sum(dims);
-			    	num_elements += max_y - min_y;
-		    	}    			
-    		}
-    		if(num_elements > 0)
-	    		mean_scratch = (1.0f/num_elements)* mean_scratch;
-		    memcpy(mean_scratch_buffer + batch*embedding*embedding_size + embedding*embedding_size,mean_scratch.data(),sizeof(T)*embedding_size);
-    	}
-    }
-  }
+		Eigen::array<int, 4> window(1,1,1,embedding_size);
+		Eigen::array<int, 4> offset_logits(0,0,0,0);
+		Eigen::array<int, 1> dims({2});
+
+		Eigen::Tensor<T,3, Eigen::RowMajor> mean_scratch(1,1,embedding_size);
+		// Create the average embedding for each mask
+		for (int batch = 0; batch < batch_size; ++batch) {
+			offset_logits[0] = batch;
+
+			for(int embedding = 0; embedding < embedding_count; ++embedding) {
+				mean_scratch.setZero();
+				int num_elements = 0;
+
+				for(int x = 0; x < size_x; ++x){
+					offset_logits[1] = x;
+					S min_y = std::max(0,rle_mask(batch,embedding,x,0));
+					S max_y = std::min(size_y,rle_mask(batch,embedding,x,1));
+					if(max_y > min_y){
+						window[2] = max_y - min_y;
+						offset_logits[2] = min_y;
+
+						mean_scratch += (logits_embeddings.slice(offset_logits,window)).sum(dims);
+						num_elements += max_y - min_y;
+					}    			
+				}
+				if(num_elements > 0)
+					mean_scratch = (1.0f/num_elements)* mean_scratch;
+				memcpy(mean_scratch_buffer + batch*embedding*embedding_size + embedding*embedding_size,
+					mean_scratch.data(),
+					sizeof(T)*embedding_size);
+			}
+		}
+	}
 };
 
 
